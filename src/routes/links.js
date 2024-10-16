@@ -354,5 +354,17 @@ router.post('/eliminar-usuario', [
     }
 });
 
+router.get('/ventas', (req, res) => {
+    res.render('links/ventas', {
+        title: 'Ventas',
+        errors: [],
+        data: {}
+    });
+});
 
+router.post('/ventas', [], async (req, res) => {
+    }
+);
+
+// las cosas van antes de aqui
 module.exports = router;
