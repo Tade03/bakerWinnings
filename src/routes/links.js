@@ -6,6 +6,7 @@ const { body, validationResult } = require('express-validator');
 const { data } = require('autoprefixer');
 const helpers = require('../lib/helpers');
 const util = require('util'); // Asegúrate de tener esta línea
+const { error } = require('console');
 
 const poolQuery = util.promisify(pool.query).bind(pool);
 
@@ -196,17 +197,17 @@ router.post('/actualizar-usuario', [
     try {
         // Verificar si ya existe un registro con los mismos datos
         const existingUser = await pool.query(
-            'SELECT * FROM Usuarios WHERE nombre = ? AND apellido_paterno = ? AND apellido_materno = ? AND num_empleado != ?',
+            'SELECT * FROM Usuarios WHERE LOWER(nombre) = ? AND LOWER(apellido_paterno) = ? AND LOWER(apellido_materno) = ? AND LOWER(num_empleado) != ?',
             [nombre, apellido_paterno, apellido_materno, num_empleado]
         );
 
         const existingCorreo = await pool.query(
-            'SELECT * FROM Correos WHERE correo = ? AND id_correo != (SELECT id_correo FROM Usuarios WHERE num_empleado = ?)',
+            'SELECT * FROM Correos WHERE LOWER(correo) = ? AND id_correo != (SELECT id_correo FROM Usuarios WHERE num_empleado = ?)',
             [correo, num_empleado]
         );
 
         const existingTelefono = await pool.query(
-            'SELECT * FROM Telefonos WHERE telefono = ? AND id_telefono != (SELECT id_telefono FROM Usuarios WHERE num_empleado = ?)',
+            'SELECT * FROM Telefonos WHERE LOWER(telefono) = ? AND LOWER(id_telefono) != (SELECT id_telefono FROM Usuarios WHERE num_empleado = ?)',
             [telefono, num_empleado]
         );
 
@@ -219,6 +220,7 @@ router.post('/actualizar-usuario', [
         }
 
         // Actualiza la información del usuario
+        
         const resultUsuario = await pool.query(
             'UPDATE Usuarios SET nombre = ?, apellido_paterno = ?, apellido_materno = ? WHERE num_empleado = ?',
             [nombre, apellido_paterno, apellido_materno, num_empleado]
@@ -354,5 +356,189 @@ router.post('/eliminar-usuario', [
     }
 });
 
+router.get('/productos', (req, res) => {
+    res.render('links/productos', {
+        title: 'Productos',
+        errors: [],
+        data: {}
+    }); 
+});
 
+// Nueva ruta para obtener los datos de los ingredientes
+router.get('/api/productos', async (req, res) => {
+    try {
+        const ingredientes = await pool.query('SELECT * FROM ingredientes');
+        res.json(ingredientes);
+    } catch (error) {
+        console.error('Error al obtener los ingredientes: ', error);
+        res.status(500).json({ error: 'Error al obtener los ingredientes' });
+    }
+});
+
+// Ruta para agregar un producto
+router.post('/productos', [
+    body('Nombre_producto').notEmpty().withMessage('Falta nombre del producto'),
+    body('Costo_producto').notEmpty().withMessage('Falta el costo del producto'),
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.render('links/productos', {
+            title: 'Productos',
+            errors: errors.array(),
+            data: req.body 
+        });
+    }
+
+    // Si no hay errores, procede con la lógica de inserción de usuario
+    const { nombre_producto, costo_producto } = req.body;
+
+    try {
+
+        const existingProducto = await poolQuery('SELECT * FROM ingredientes WHERE nombre_ingrediente = ? AND costo_ingrediente = ?',
+            [nombre_producto, costo_producto]
+        );
+
+        if (existingProducto.length > 0) {
+            return res.render('links/productos', {
+                title: 'Productos',
+                errors: [{ msg: 'Se repiten los datos' }],
+                data: req.body
+            });
+        }
+
+        const prod = {
+            nombre_producto,
+            costo_producto
+        };
+        const productoResult = await queryAsync('INSERT INTO ingredientes SET ?', [prod]);
+        const idIng = productoResult.insertId;
+
+        res.render('links/productos', {
+            title: 'Insertar Usuarios',
+            success_msg: 'Usuario insertado correctamente',
+            error_msg: null
+        });
+    } catch (err) {
+        console.error(err);
+        res.render('links/productos', {
+            title: 'Agregar productos',
+            success_msg: null,
+            error_msg: 'Error al insertar producto'
+        });
+    }
+});
+
+// Ruta para actualizar un producto
+router.post('/actualizar-producto', [
+    body('nombre_producto').notEmpty().withMessage('Falta nombre del producto'),
+    body('costo_producto').notEmpty().withMessage('Falta el costo del producto'),
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.render('links/productos', {
+            title: 'Productos',
+            errors: errors.array(),
+            data: req.body 
+        });
+    }
+
+    // Si no hay errores, procede con la lógica de actualización de producto
+    const { id_ingrediente, nombre_producto, costo_producto } = req.body;
+
+    try {
+        const existingProducto = await poolQuery('SELECT * FROM ingredientes WHERE nombre_ingrediente = ? AND costo_ingrediente = ? AND id_ingrediente != ?',
+            [nombre_producto, costo_producto, id_ingrediente]
+        );
+
+        if (existingProducto.length > 0) {
+            return res.render('links/productos', {
+                title: 'Productos',
+                errors: [{ msg: 'Se repiten los datos' }],
+                data: req.body
+            });
+        }
+
+        await poolQuery('UPDATE ingredientes SET nombre_ingrediente = ?, costo_ingrediente = ? WHERE id_ingrediente = ?',
+            [nombre_producto, costo_producto, id_ingrediente]
+        );
+
+        res.render('links/productos', {
+            title: 'Productos',
+            success_msg: 'Producto actualizado correctamente',
+            error_msg: null
+        });
+    } catch (err) {
+        console.error(err);
+        res.render('links/productos', {
+            title: 'Productos',
+            success_msg: null,
+            error_msg: 'Error al actualizar producto'
+        });
+    }
+});
+
+// Ruta para eliminar un producto por nombre
+router.post('/eliminar-producto', [
+    body('nombre_ingrediente').notEmpty().withMessage('Falta el nombre del producto')
+], async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+        return res.render('links/productos', {
+            title: 'Productos',
+            errors: errors.array(),
+            data: req.body 
+        });
+    }
+
+    const { nombre_ingrediente } = req.body;
+
+    try {
+        const existingProducto = await poolQuery('SELECT * FROM ingredientes WHERE nombre_ingrediente = ?', [nombre_ingrediente]);
+
+        if (existingProducto.length === 0) {
+            return res.render('links/productos', {
+                title: 'Productos',
+                errors: [{ msg: 'El producto no existe' }],
+                data: req.body
+            });
+        }
+
+        await poolQuery('DELETE FROM ingredientes WHERE nombre_ingrediente = ?', [nombre_ingrediente]);
+
+        res.render('links/productos', {
+            title: 'Productos',
+            success_msg: 'Producto eliminado correctamente',
+            error_msg: null
+        });
+    } catch (err) {
+        console.error(err);
+        res.render('links/productos', {
+            title: 'Productos',
+            success_msg: null,
+            error_msg: 'Error al eliminar producto'
+        });
+    }
+});
+
+router.get('/produccion', (req, res) => {
+    res.render('links/produccion', {
+        title: 'Produccion',
+        errors: [],
+        data: {}
+    });
+});
+
+router.get('/ventas', (req, res) => {
+    res.render('links/ventas', {
+        title: 'Ventas',
+        errors: [],
+        data: {}
+    });
+});
+
+router.post('/ventas', [], async (req, res) => {
+    }
+);
+
+// las cosas van antes de aqui
 module.exports = router;
